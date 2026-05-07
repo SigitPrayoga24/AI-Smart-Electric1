@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html><head>
+<title>Dashboard Prediksi Listrik</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #f0f4f8; padding: 2rem; }
+  h1 { color: #1a56db; margin-bottom: 0.25rem; }
+  .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1rem; }
+
+  .card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .card .val { font-size: 2rem; font-weight: 700; color: #1a56db; }
+  .card .lbl { font-size: 0.8rem; color: #888; margin-top: 4px; }
+  .card .sub { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+
+  .card.green .val { color: #2f855a; }
+  .card.red   .val { color: #c53030; }
+  .card.gray  .val { color: #555; }
+
+  .decision { border-radius: 12px; padding: 1.25rem 1.5rem;
+              margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .decision.tinggi { background: #fff5f5; border-left: 5px solid #fc8181; }
+  .decision.normal { background: #f0fff4; border-left: 5px solid #68d391; }
+  .decision.rendah { background: #ebf8ff; border-left: 5px solid #63b3ed; }
+  .decision h3 { font-size: 1rem; margin-bottom: 4px; }
+  .decision p  { font-size: 0.85rem; color: #555; }
+
+  .section-title { font-size: 0.75rem; font-weight: 600; color: #999;
+                   text-transform: uppercase; letter-spacing: 1px;
+                   margin: 1.25rem 0 0.5rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; padding: 8px 10px; background: #f7fafc;
+       color: #555; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f0f4f8; color: #333; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 10px;
+           font-size: 0.75rem; font-weight: 600; }
+  .badge-blue  { background: #ebf8ff; color: #2b6cb0; }
+  .badge-green { background: #f0fff4; color: #276749; }
+</style>
+</head><body>
+
+<h1>Dashboard Prediksi Beban Listrik Harian</h1>
+<p class="subtitle">Implementasi AIoT &mdash; Dataset UCI Household Electric Power Consumption (2006&ndash;2010)</p>
+
+<p class="section-title">Ringkasan Data</p>
+<div class="grid3">
+  <div class="card">
+    <div class="val">{{ total }}</div>
+    <div class="lbl">Total data (hari)</div>
+  </div>
+  <div class="card">
+    <div class="val">{{ avg }}</div>
+    <div class="lbl">Rata-rata konsumsi (kW/hari)</div>
+  </div>
+  <div class="card">
+    <div class="val">{{ avg_last7 }}</div>
+    <div class="lbl">Rata-rata 7 hari terakhir (kW)</div>
+  </div>
+</div>
+
+<p class="section-title">Decision Support</p>
+<div class="decision {{ status }}">
+  {% if status == 'tinggi' %}
+    <h3>⚠️ Konsumsi Listrik Tinggi</h3>
+    <p>Rata-rata 7 hari terakhir (<strong>{{ avg_last7 }} kW</strong>) melebihi rata-rata keseluruhan (<strong>{{ avg }} kW</strong>). Disarankan mengurangi penggunaan perangkat listrik berdaya besar.</p>
+  {% elif status == 'rendah' %}
+    <h3>✅ Konsumsi Listrik Rendah</h3>
+    <p>Rata-rata 7 hari terakhir (<strong>{{ avg_last7 }} kW</strong>) lebih rendah dari rata-rata keseluruhan (<strong>{{ avg }} kW</strong>). Konsumsi listrik dalam kondisi hemat.</p>
+  {% else %}
+    <h3>✅ Konsumsi Listrik Normal</h3>
+    <p>Rata-rata 7 hari terakhir (<strong>{{ avg_last7 }} kW</strong>) berada dalam batas normal dibanding rata-rata keseluruhan (<strong>{{ avg }} kW</strong>).</p>
+  {% endif %}
+</div>
+
+<p class="section-title">Metrik Evaluasi Model</p>
+<div class="grid3">
+  <div class="card green">
+    <div class="val">{{ mae }}</div>
+    <div class="lbl">MAE (Mean Absolute Error)</div>
+    <div class="sub">Semakin kecil semakin baik</div>
+  </div>
+  <div class="card gray">
+    <div class="val">{{ rmse }}</div>
+    <div class="lbl">RMSE (Root Mean Square Error)</div>
+    <div class="sub">Semakin kecil semakin baik</div>
+  </div>
+  <div class="card blue" style="--c:#1a56db">
+    <div class="val" style="color:#1a56db">{{ r2 }}</div>
+    <div class="lbl">R² Score</div>
+    <div class="sub">Semakin mendekati 1 semakin baik</div>
+  </div>
+</div>
+
+<p class="section-title">Fitur dan Label Model</p>
+<div class="grid2">
+  <div class="card">
+    <table>
+      <tr><th>Fitur Input (X)</th><th>Keterangan</th></tr>
+      <tr><td>avg_voltage</td><td>Rata-rata tegangan harian</td></tr>
+      <tr><td>avg_intensity</td><td>Rata-rata arus harian</td></tr>
+      <tr><td>day_of_week</td><td>Hari dalam seminggu (0–6)</td></tr>
+      <tr><td>month</td><td>Bulan (1–12)</td></tr>
+      <tr><td>day_of_year</td><td>Hari ke-n dalam setahun</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <table>
+      <tr><th>Komponen</th><th>Nilai</th></tr>
+      <tr><td>Label / Target (y)</td><td><span class="badge badge-blue">total_power (kW/hari)</span></td></tr>
+      <tr><td>Model 1</td><td><span class="badge badge-green">Linear Regression</span></td></tr>
+      <tr><td>Model 2</td><td><span class="badge badge-green">Random Forest</span></td></tr>
+      <tr><td>Split data</td><td>80% train / 20% test</td></tr>
+      <tr><td>Total data</td><td>{{ total }} hari</td></tr>
+    </table>
+  </div>
+</div>
+
+<p class="section-title">Grafik Prediksi vs Aktual (60 Hari Terakhir)</p>
+<div class="card">
+  <canvas id="myChart" height="80"></canvas>
+</div>
+
+<script>
+const dates     = {{ dates|safe }};
+const actual    = {{ actual|safe }};
+const predicted = {{ predicted|safe }};
+
+new Chart(document.getElementById('myChart'), {
+  type: 'line',
+  data: {
+    labels: dates,
+    datasets: [
+      { label: 'Aktual', data: actual,
+        borderColor: '#e53e3e', backgroundColor: 'rgba(229,62,62,0.08)',
+        fill: true, tension: 0.3, pointRadius: 2 },
+      { label: 'Prediksi', data: predicted,
+        borderColor: '#3182ce', backgroundColor: 'rgba(49,130,206,0.05)',
+        fill: true, tension: 0.3, borderDash: [5,5], pointRadius: 2 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      y: { title: { display: true, text: 'Total Power (kW)' } },
+      x: { title: { display: true, text: 'Tanggal' },
+           ticks: { maxTicksLimit: 10 } }
+    }
+  }
+});
+</script>
+</body></html>
